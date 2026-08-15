@@ -147,31 +147,7 @@ def build_cached_etf_feed():
         feed_df['Inception_Date'] = pd.to_datetime(feed_df['Inception_Date'], errors='coerce')
         feed_df = feed_df.sort_values(by='Inception_Date', ascending=False)
         feed_df['Inception_Date'] = feed_df['Inception_Date'].dt.strftime('%Y-%m-%d').fillna("Unknown")
-        
-        # Batch fetch daily price change percentages
-        symbols = feed_df['Symbol'].tolist()
-        print(f"Fetching daily price change percentages for {len(symbols)} ETFs...")
-        
-        batch_size = 1000
-        change_map = {}
-        
-        for idx in range(0, len(symbols), batch_size):
-            batch = symbols[idx:idx+batch_size]
-            try:
-                data = yf.download(batch, period="2d", progress=False, threads=False)
-                if 'Close' in data:
-                    close_df = data['Close']
-                    if isinstance(close_df, pd.Series):
-                        close_df = close_df.to_frame()
-                    if len(close_df) >= 2:
-                        changes = (close_df.iloc[-1] - close_df.iloc[-2]) / close_df.iloc[-2] * 100
-                        change_map.update(changes.to_dict())
-                time.sleep(1.0)
-            except Exception as e:
-                print(f"Error fetching price changes for batch starting at {idx}: {e}")
-                
-        feed_df['Daily_Change'] = feed_df['Symbol'].map(change_map)
-        
+
     return feed_df
 
 def generate_dashboard(df, output_path="index.html"):
@@ -180,16 +156,12 @@ def generate_dashboard(df, output_path="index.html"):
     for _, row in df.iterrows():
         assets = row['Total_Assets']
         assets_val = float(assets) if pd.notna(assets) else None
-        
-        change = row.get('Daily_Change')
-        change_val = float(change) if pd.notna(change) else None
-        
+
         records.append({
             'Symbol': str(row['Symbol']),
             'Name': str(row['Name']),
             'Inception_Date': str(row['Inception_Date']),
-            'Total_Assets': assets_val,
-            'Daily_Change': change_val
+            'Total_Assets': assets_val
         })
         
     json_data = json.dumps(records)
@@ -550,24 +522,6 @@ def generate_dashboard(df, output_path="index.html"):
             color: var(--text-secondary);
         }
 
-        .col-change {
-            text-align: right;
-            font-weight: 600;
-            font-family: monospace;
-        }
-
-        .change-pos {
-            color: var(--success);
-        }
-
-        .change-neg {
-            color: var(--danger);
-        }
-
-        .change-zero {
-            color: var(--text-secondary);
-        }
-
         .col-assets {
             text-align: right;
             font-weight: 600;
@@ -732,16 +686,13 @@ def generate_dashboard(df, output_path="index.html"):
                             <th style="width: 12%;" onclick="sortData('Symbol')">
                                 Symbol<span class="sort-indicator" id="sort-Symbol"></span>
                             </th>
-                            <th style="width: 43%;" onclick="sortData('Name')">
+                            <th style="width: 48%;" onclick="sortData('Name')">
                                 Name<span class="sort-indicator" id="sort-Name"></span>
                             </th>
-                            <th style="width: 15%; text-align: center;" onclick="sortData('Inception_Date')">
+                            <th style="width: 20%; text-align: center;" onclick="sortData('Inception_Date')">
                                 Inception Date<span class="sort-indicator" id="sort-Inception_Date"></span>
                             </th>
-                            <th style="width: 15%; text-align: right;" onclick="sortData('Daily_Change')">
-                                Change %<span class="sort-indicator" id="sort-Daily_Change"></span>
-                            </th>
-                            <th style="width: 15%; text-align: right;" onclick="sortData('Total_Assets')">
+                            <th style="width: 20%; text-align: right;" onclick="sortData('Total_Assets')">
                                 Total Assets<span class="sort-indicator" id="sort-Total_Assets"></span>
                             </th>
                         </tr>
@@ -794,18 +745,6 @@ def generate_dashboard(df, output_path="index.html"):
             if (num >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
             if (num >= 1e6) return '$' + (num / 1e6).toFixed(2) + 'M';
             return '$' + num.toLocaleString();
-        }
-
-        function formatChange(val) {
-            if (val === null || val === undefined || isNaN(val)) return '<span class="change-zero">—</span>';
-            const formatted = Math.abs(val).toFixed(2) + '%';
-            if (val > 0) {
-                return `<span class="change-pos">▲ +${formatted}</span>`;
-            } else if (val < 0) {
-                return `<span class="change-neg">▼ -${formatted}</span>`;
-            } else {
-                return `<span class="change-zero">0.00%</span>`;
-            }
         }
 
         let filteredData = [...etfData];
@@ -866,10 +805,6 @@ def generate_dashboard(df, output_path="index.html"):
                 tdDate.className = "col-date";
                 tdDate.innerText = item.Inception_Date || "—";
 
-                const tdChange = document.createElement("td");
-                tdChange.className = "col-change";
-                tdChange.innerHTML = formatChange(item.Daily_Change);
-
                 const tdAssets = document.createElement("td");
                 tdAssets.className = "col-assets";
                 const formattedAssets = formatUSD(item.Total_Assets);
@@ -881,7 +816,6 @@ def generate_dashboard(df, output_path="index.html"):
                 tr.appendChild(tdSymbol);
                 tr.appendChild(tdName);
                 tr.appendChild(tdDate);
-                tr.appendChild(tdChange);
                 tr.appendChild(tdAssets);
                 tbody.appendChild(tr);
             });
@@ -961,7 +895,7 @@ def generate_dashboard(df, output_path="index.html"):
         }
 
         function updateSortHeaders() {
-            const columns = ["Symbol", "Name", "Inception_Date", "Daily_Change", "Total_Assets"];
+            const columns = ["Symbol", "Name", "Inception_Date", "Total_Assets"];
             columns.forEach(col => {
                 const el = document.getElementById(`sort-${col}`);
                 if (!el) return;
